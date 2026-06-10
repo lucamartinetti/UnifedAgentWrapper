@@ -26,3 +26,4 @@ packages = ["unified_agent", "unified_agent.backends"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["slow: spawns subprocesses or takes >1s"]
