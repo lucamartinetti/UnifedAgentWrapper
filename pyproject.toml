@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unified-agent"
+version = "0.1.0"
+description = "Drive OpenAI Codex and Claude Code as interchangeable agent units: same tasks, same tools, same skills."
+requires-python = ">=3.11"
+dependencies = [
+    "claude-agent-sdk>=0.2.90",
+    "openai-codex>=0.1.0b3",
+    "mcp>=1.23.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.setuptools]
+packages = ["unified_agent", "unified_agent.backends"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["slow: spawns subprocesses or takes >1s"]
