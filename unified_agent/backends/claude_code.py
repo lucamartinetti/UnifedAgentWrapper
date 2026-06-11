@@ -91,10 +91,15 @@ def build_options(opts: RunOptions) -> ClaudeAgentOptions:
         # Hermetic: only project-level settings/skills/CLAUDE.md from the
         # workspace; no user/local config bleeding into runs.
         setting_sources=["project"],
+        # Always run with Claude Code's native system prompt: passing None
+        # strips it entirely — including the working-directory env context —
+        # which makes the model write files outside the workspace. This
+        # mirrors Codex, where developer_instructions append to (never
+        # replace) the base prompt.
         system_prompt=(
             {"type": "preset", "preset": "claude_code", "append": opts.instructions}
             if opts.instructions
-            else None
+            else {"type": "preset", "preset": "claude_code"}
         ),
         output_format=(
             {"type": "json_schema", "schema": opts.output_schema}
