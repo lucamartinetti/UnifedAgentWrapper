@@ -95,6 +95,8 @@ class UnifiedAgent:
             discovery dirs on first run.
         instructions: appended to each backend's native system prompt
             (Claude: claude_code preset append; Codex: developer_instructions).
+        effort: reasoning effort. Both accept "low"|"medium"|"high"|"xhigh";
+            Claude additionally "max", Codex "none"/"minimal".
         extra_env: environment passed to the agent process and the tool server.
         stream_text: emit TextDelta events for incremental assistant text.
     """
@@ -109,6 +111,7 @@ class UnifiedAgent:
         tools: "ToolRegistry | str | None" = None,
         skills_dir: "str | Path | None" = None,
         instructions: str | None = None,
+        effort: str | None = None,
         extra_env: Mapping[str, str] | None = None,
         stream_text: bool = False,
         skills_install_mode: str = "symlink",
@@ -120,6 +123,7 @@ class UnifiedAgent:
         self.tools = tools
         self.skills_dir = Path(skills_dir).resolve() if skills_dir else None
         self.instructions = instructions
+        self.effort = effort
         self.extra_env = dict(extra_env or {})
         self.stream_text = stream_text
         self.skills_install_mode = skills_install_mode
@@ -151,6 +155,7 @@ class UnifiedAgent:
             model=self.model,
             sandbox=self.sandbox,
             instructions=self.instructions,
+            effort=self.effort,
             tool_server=self._tool_server,
             output_schema=output_schema,
             resume=resume,

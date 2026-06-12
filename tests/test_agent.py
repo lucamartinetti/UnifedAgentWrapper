@@ -111,12 +111,14 @@ async def test_run_options_carry_configuration(tmp_path):
         workspace=tmp_path / "ws",
         model="some-model",
         instructions="be terse",
+        effort="xhigh",
     )
     schema = {"type": "object", "properties": {"x": {"type": "string"}}}
     await agent.run("t", output_schema=schema, resume="sess-9", max_turns=3)
     opts = backend.seen_opts[0]
     assert opts.model == "some-model"
     assert opts.instructions == "be terse"
+    assert opts.effort == "xhigh"
     assert opts.output_schema == schema
     assert opts.resume == "sess-9"
     assert opts.max_turns == 3

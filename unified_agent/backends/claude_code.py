@@ -106,6 +106,7 @@ def build_options(opts: RunOptions) -> ClaudeAgentOptions:
             if opts.output_schema
             else None
         ),
+        effort=opts.effort,
         resume=opts.resume,
         max_turns=opts.max_turns,
         env=dict(opts.extra_env),

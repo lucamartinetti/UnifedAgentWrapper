@@ -10,6 +10,7 @@ from unified_agent.backends.codex import (
     _TurnState,
     build_config_overrides,
     build_thread_kwargs,
+    build_turn_kwargs,
     normalize_notification,
 )
 from unified_agent.events import (
@@ -76,6 +77,21 @@ def test_thread_kwargs_passthroughs(tmp_path):
     assert kw["developer_instructions"] == "be terse"
     kw2 = build_thread_kwargs(opts(tmp_path))
     assert "model" not in kw2 and "developer_instructions" not in kw2
+
+
+def test_turn_kwargs_effort_mapping(tmp_path):
+    from openai_codex.generated.v2_all import ReasoningEffort
+
+    kw = build_turn_kwargs(opts(tmp_path, effort="xhigh"))
+    assert kw["effort"] is ReasoningEffort.xhigh
+    assert build_turn_kwargs(opts(tmp_path)) == {"output_schema": None}
+
+
+def test_turn_kwargs_invalid_effort(tmp_path):
+    from unified_agent.types import AgentRunError
+
+    with pytest.raises(AgentRunError, match="effort"):
+        build_turn_kwargs(opts(tmp_path, effort="max"))  # claude-only level
 
 
 # --- notification normalization ---------------------------------------------

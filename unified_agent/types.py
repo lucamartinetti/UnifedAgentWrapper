@@ -64,6 +64,9 @@ class RunOptions:
     model: str | None = None
     sandbox: SandboxPolicy = SandboxPolicy.WORKSPACE_WRITE
     instructions: str | None = None
+    # Reasoning effort. Both backends accept "low"|"medium"|"high"|"xhigh";
+    # Claude additionally accepts "max", Codex "none"/"minimal".
+    effort: str | None = None
     tool_server: ToolServerSpec | None = None
     output_schema: dict[str, Any] | None = None
     resume: str | None = None

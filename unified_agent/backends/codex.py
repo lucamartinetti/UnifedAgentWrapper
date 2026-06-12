@@ -72,6 +72,22 @@ def build_config_overrides(spec: ToolServerSpec) -> tuple[str, ...]:
     )
 
 
+def build_turn_kwargs(opts: RunOptions) -> dict[str, Any]:
+    """Per-turn kwargs for Thread.turn()/run(): output schema + reasoning effort."""
+    kwargs: dict[str, Any] = {"output_schema": opts.output_schema}
+    if opts.effort:
+        from openai_codex.generated.v2_all import ReasoningEffort
+
+        try:
+            kwargs["effort"] = ReasoningEffort(opts.effort)
+        except ValueError as e:
+            valid = ", ".join(m.value for m in ReasoningEffort)
+            raise AgentRunError(
+                f"invalid effort {opts.effort!r} for codex (valid: {valid})"
+            ) from e
+    return kwargs
+
+
 def build_thread_kwargs(opts: RunOptions) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "cwd": str(opts.workspace),
@@ -263,7 +279,7 @@ class CodexBackend:
                     state.session_announced = True
                     yield SessionStarted(session_id=state.thread_id)
 
-                handle = thread.turn(prompt, output_schema=opts.output_schema)
+                handle = thread.turn(prompt, **build_turn_kwargs(opts))
                 if inspect.isawaitable(handle):
                     handle = await handle
                 async for note in handle.stream():

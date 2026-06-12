@@ -159,7 +159,7 @@ python -m examples.demo ...    # live runs (cost money, need auth)
 ## Limitations (PoC)
 
 - No mid-turn steering/interrupt; no interactive permission prompts (headless policies only).
-- Codex `model_reasoning_effort`, Claude `effort`/thinking knobs not yet surfaced.
+- Thinking-display knobs not surfaced (reasoning `effort` is: `UnifiedAgent(effort="xhigh")`).
 - Sessions resume per backend; they do not transfer across backends.
 - Windows untested (symlink installer has a copy fallback: `skills_install_mode="copy"`).
 

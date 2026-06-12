@@ -90,6 +90,11 @@ def test_instructions_append_to_claude_code_preset(tmp_path):
     }
 
 
+def test_effort_passthrough(tmp_path):
+    assert build_options(opts(tmp_path, effort="xhigh")).effort == "xhigh"
+    assert build_options(opts(tmp_path)).effort is None
+
+
 def test_default_keeps_native_claude_code_system_prompt(tmp_path):
     """Regression: system_prompt=None strips Claude Code's system prompt entirely
     (including working-directory context), making file ops land outside the
