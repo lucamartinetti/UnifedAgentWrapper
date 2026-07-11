@@ -10,3 +10,5 @@ build/
 .ruff_cache/
 # agent-runtime litter inside demo workspaces
 examples/workspace/
+# local agent harness config
+.claude/

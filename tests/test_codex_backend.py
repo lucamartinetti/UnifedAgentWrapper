@@ -80,10 +80,10 @@ def test_thread_kwargs_passthroughs(tmp_path):
 
 
 def test_turn_kwargs_effort_mapping(tmp_path):
-    from openai_codex.generated.v2_all import ReasoningEffort
-
+    # effort passes through as a plain string; the SDK's pydantic layer coerces
+    # it (scripts/verify_sdk_surface.py asserts the coercion + enum drift).
     kw = build_turn_kwargs(opts(tmp_path, effort="xhigh"))
-    assert kw["effort"] is ReasoningEffort.xhigh
+    assert kw["effort"] == "xhigh"
     assert build_turn_kwargs(opts(tmp_path)) == {"output_schema": None}
 
 

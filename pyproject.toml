@@ -4,24 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unified-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Drive OpenAI Codex and Claude Code as interchangeable agent units: same tasks, same tools, same skills."
 requires-python = ">=3.11"
 dependencies = [
-    "claude-agent-sdk>=0.2.90",
-    "openai-codex>=0.1.0b3",
     "mcp>=1.23.0",
     "pyyaml>=6.0",
 ]
 
+# Backend SDKs are opt-in extras: each pulls a ~200MB vendor runtime (the SDKs
+# bundle the Claude Code CLI / pinned codex binary), so consumers install only
+# the backend they use. Both are pre-1.0 and churn fast; the caps guard against
+# API breaks — treat every bump as a behavior change (see README, Tests).
 [project.optional-dependencies]
+claude = ["claude-agent-sdk>=0.2.90,<0.3"]
+codex = ["openai-codex>=0.1.0b3,<0.2"]
+all = [
+    "claude-agent-sdk>=0.2.90,<0.3",
+    "openai-codex>=0.1.0b3,<0.2",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "claude-agent-sdk>=0.2.90,<0.3",
+    "openai-codex>=0.1.0b3,<0.2",
 ]
 
 [tool.setuptools]
 packages = ["unified_agent", "unified_agent.backends"]
+
+[tool.setuptools.package-data]
+unified_agent = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

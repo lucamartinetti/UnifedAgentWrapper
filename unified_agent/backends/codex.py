@@ -46,6 +46,12 @@ SANDBOX_MAP = {
     SandboxPolicy.FULL_ACCESS: Sandbox.full_access,
 }
 
+# Effort levels Codex accepts. Kept as a local constant so the runtime never
+# imports from openai_codex.generated (that layer is regenerated wholesale and
+# has removed public names without deprecation); scripts/verify_sdk_surface.py
+# asserts this set still matches the SDK's ReasoningEffort enum.
+CODEX_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
+
 
 def _toml_string(value: str) -> str:
     # A JSON string is a valid TOML basic string (same escaping rules for
@@ -76,15 +82,12 @@ def build_turn_kwargs(opts: RunOptions) -> dict[str, Any]:
     """Per-turn kwargs for Thread.turn()/run(): output schema + reasoning effort."""
     kwargs: dict[str, Any] = {"output_schema": opts.output_schema}
     if opts.effort:
-        from openai_codex.generated.v2_all import ReasoningEffort
-
-        try:
-            kwargs["effort"] = ReasoningEffort(opts.effort)
-        except ValueError as e:
-            valid = ", ".join(m.value for m in ReasoningEffort)
+        if opts.effort not in CODEX_EFFORTS:
             raise AgentRunError(
-                f"invalid effort {opts.effort!r} for codex (valid: {valid})"
-            ) from e
+                f"invalid effort {opts.effort!r} for codex "
+                f"(valid: {', '.join(sorted(CODEX_EFFORTS))})"
+            )
+        kwargs["effort"] = opts.effort  # the SDK coerces the string to its enum
     return kwargs
 
 

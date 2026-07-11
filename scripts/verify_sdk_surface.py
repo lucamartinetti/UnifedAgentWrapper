@@ -87,6 +87,22 @@ for name in ["TurnResult", "ThreadTokenUsage"]:
     has = hasattr(oc, name)
     print(f"openai_codex.{name}:", has)
 
+# effort: the runtime hardcodes CODEX_EFFORTS and passes effort as a plain
+# string (backends/codex.py never imports from the regenerated generated/
+# layer). This script is the one place allowed to import it, to catch drift.
+from openai_codex.generated.v2_all import ReasoningEffort, TurnStartParams
+
+from unified_agent.backends.codex import CODEX_EFFORTS
+
+sdk_efforts = {m.value for m in ReasoningEffort}
+check(CODEX_EFFORTS == sdk_efforts,
+      f"CODEX_EFFORTS matches ReasoningEffort (local={sorted(CODEX_EFFORTS)}, sdk={sorted(sdk_efforts)})")
+try:
+    coerced = TurnStartParams(thread_id="probe", input=[], effort="high").effort
+    check(coerced is ReasoningEffort.high, "TurnStartParams coerces effort='high' string")
+except Exception as e:  # noqa: BLE001 - any failure here is a surface break
+    check(False, f"TurnStartParams(effort='high') raised {type(e).__name__}: {e}")
+
 # --- mcp ----------------------------------------------------------------
 from mcp.server.fastmcp import FastMCP
 

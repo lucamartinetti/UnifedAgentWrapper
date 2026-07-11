@@ -48,7 +48,8 @@ def _make_backend(backend: "str | AgentBackend") -> AgentBackend:
     except ImportError as e:
         raise BackendUnavailableError(
             f"backend {backend!r} is installed-time unavailable: {e}. "
-            f"Install the SDK ('pip install claude-agent-sdk' / 'pip install --pre openai-codex')."
+            f"Install its extra: pip install 'unified-agent[{backend}]' "
+            f"(or 'unified-agent[all]' for both backends)."
         ) from e
     raise BackendUnavailableError(
         f"unknown backend {backend!r}; expected one of {BACKEND_NAMES} or an AgentBackend instance"

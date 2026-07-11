@@ -39,9 +39,21 @@ Verified live (2026-06-11): both backends called the **byte-identical** custom t
 
 ## Install
 
+Backends are opt-in extras — each SDK bundles a ~200MB vendor runtime, so
+install only what you use:
+
 ```bash
-pip install -e '.[dev]'        # pulls claude-agent-sdk, openai-codex (beta), mcp, pyyaml
+pip install -e '.[dev]'        # this repo: both backends + pytest
+
+# as a dependency in another project (pick one):
+pip install 'unified-agent[all] @ git+https://<repo-url>'     # both backends
+pip install 'unified-agent[claude] @ git+https://<repo-url>'  # Claude Code only
+pip install 'unified-agent[codex] @ git+https://<repo-url>'   # Codex only
 ```
+
+Both SDKs are pre-1.0 and move fast, so they are pinned with upper bounds
+(`<0.3` / `<0.2`). Treat every pin bump as a behavior change — most
+claude-agent-sdk releases swap the bundled CLI — and re-verify (see Tests).
 
 Auth (uses your existing logins):
 - **Claude:** Claude Code login (`claude /login`) or `ANTHROPIC_API_KEY`.
@@ -152,9 +164,14 @@ environment settings.
 ## Tests
 
 ```bash
-pytest -q                      # 86 unit tests, no network, no auth needed
+pytest -q                      # 90 unit tests, no network, no auth needed
 python -m examples.demo ...    # live runs (cost money, need auth)
 ```
+
+**On every SDK pin bump** (an SDK upgrade is an agent-behavior change, even at
+patch level): `python scripts/verify_sdk_surface.py` (free — asserts every SDK
+name/shape the code relies on) → `pytest -q` (free, offline) →
+`python -m examples.demo --backend both` (cents — live behavior).
 
 ## Limitations (PoC)
 
@@ -169,7 +186,7 @@ python -m examples.demo ...    # live runs (cost money, need auth)
 unified_agent/        the package (types, events, task, tools, tool_server, skills, agent)
 unified_agent/backends/  claude_code.py, codex.py, base.py
 examples/             demo_tools.py, skills/word-count-report/, demo.py
-tests/                86 unit tests incl. a real stdio MCP round-trip
+tests/                90 unit tests incl. a real stdio MCP round-trip
 docs/superpowers/     design spec + implementation plan
 scripts/              verify_sdk_surface.py (re-run after SDK upgrades)
 ```
