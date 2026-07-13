@@ -43,7 +43,8 @@ class UnifiedUsage:
             input_tokens=self.input_tokens + other.input_tokens,
             cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
-            reasoning_output_tokens=self.reasoning_output_tokens + other.reasoning_output_tokens,
+            reasoning_output_tokens=self.reasoning_output_tokens
+            + other.reasoning_output_tokens,
         )
 
 
@@ -89,6 +90,7 @@ class UnifiedResult:
     file_changes: "list[FileChanged]"
     events: "list[AgentEvent]"
     error: str | None = None
+    monitor_run_id: str | None = None
 
 
 class UnifiedAgentError(Exception):

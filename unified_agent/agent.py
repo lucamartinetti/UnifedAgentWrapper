@@ -6,6 +6,8 @@ SuperAgent fans the same task out to several UnifiedAgents concurrently.
 from __future__ import annotations
 
 import asyncio
+import os
+import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterable, Mapping
 
@@ -18,6 +20,7 @@ from .events import (
     ToolCall,
     TurnCompleted,
 )
+from .monitoring import RunMonitor, SQLiteRunMonitor
 from .skills import install_skills
 from .task import Task
 from .tools import ToolRegistry, build_tool_server_spec
@@ -56,11 +59,21 @@ def _make_backend(backend: "str | AgentBackend") -> AgentBackend:
     )
 
 
-def collect(backend_name: str, events: list[AgentEvent], error: str | None = None) -> UnifiedResult:
+def collect(
+    backend_name: str,
+    events: list[AgentEvent],
+    error: str | None = None,
+    *,
+    monitor_run_id: str | None = None,
+) -> UnifiedResult:
     """Fold a normalized event stream into a UnifiedResult."""
     turn = next((e for e in reversed(events) if isinstance(e, TurnCompleted)), None)
-    last_text = next((e.text for e in reversed(events) if isinstance(e, AssistantText)), None)
-    session_id = next((e.session_id for e in events if isinstance(e, SessionStarted)), None)
+    last_text = next(
+        (e.text for e in reversed(events) if isinstance(e, AssistantText)), None
+    )
+    session_id = next(
+        (e.session_id for e in events if isinstance(e, SessionStarted)), None
+    )
 
     text = (turn.final_text if turn and turn.final_text else last_text) or ""
     success = bool(turn and turn.success) and error is None
@@ -77,6 +90,7 @@ def collect(backend_name: str, events: list[AgentEvent], error: str | None = Non
         file_changes=[e for e in events if isinstance(e, FileChanged)],
         events=list(events),
         error=error or (turn.error if turn else None),
+        monitor_run_id=monitor_run_id,
     )
 
 
@@ -100,6 +114,8 @@ class UnifiedAgent:
             Claude additionally "max", Codex "none"/"minimal".
         extra_env: environment passed to the agent process and the tool server.
         stream_text: emit TextDelta events for incremental assistant text.
+        monitor: optional run monitor. If omitted, ``UNIFIED_AGENT_MONITOR_DB``
+            enables the built-in SQLite monitor without a caller code change.
     """
 
     def __init__(
@@ -116,6 +132,7 @@ class UnifiedAgent:
         extra_env: Mapping[str, str] | None = None,
         stream_text: bool = False,
         skills_install_mode: str = "symlink",
+        monitor: RunMonitor | None = None,
     ):
         self.backend = _make_backend(backend)
         self.workspace = Path(workspace).resolve()
@@ -128,6 +145,14 @@ class UnifiedAgent:
         self.extra_env = dict(extra_env or {})
         self.stream_text = stream_text
         self.skills_install_mode = skills_install_mode
+        monitor_database = os.environ.get("UNIFIED_AGENT_MONITOR_DB")
+        self.monitor = (
+            monitor
+            if monitor is not None
+            else SQLiteRunMonitor(monitor_database)
+            if monitor_database
+            else None
+        )
         self._tool_server: ToolServerSpec | None = None
         self._prepared = False
 
@@ -140,7 +165,9 @@ class UnifiedAgent:
             return
         self.workspace.mkdir(parents=True, exist_ok=True)
         if self.skills_dir is not None:
-            install_skills(self.workspace, self.skills_dir, mode=self.skills_install_mode)
+            install_skills(
+                self.workspace, self.skills_dir, mode=self.skills_install_mode
+            )
         if self.tools is not None:
             self._tool_server = build_tool_server_spec(self.tools, self.extra_env)
         self._prepared = True
@@ -172,13 +199,63 @@ class UnifiedAgent:
         output_schema: dict[str, Any] | None = None,
         resume: str | None = None,
         max_turns: int | None = None,
+        run_id: str | None = None,
+        monitor_metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
         """Yield normalized events for one run. Raises on backend failure."""
         self._prepare()
         prompt = Task.coerce(task).render(self.backend.name)
         opts = self._run_options(output_schema, resume, max_turns)
-        async for event in self.backend.stream(prompt, opts):
-            yield event
+        recorder = None
+        if self.monitor is not None:
+            effective_run_id = run_id or uuid.uuid4().hex
+            recorder = self.monitor.start_run(
+                run_id=effective_run_id,
+                backend=self.backend.name,
+                workspace=self.workspace,
+                prompt=prompt,
+                metadata=monitor_metadata,
+            )
+
+        terminal: TurnCompleted | None = None
+
+        def finish_monitor(*, fallback_status: str, fallback_error: str | None) -> None:
+            if recorder is None:
+                return
+            if terminal is None:
+                recorder.finish(status=fallback_status, error=fallback_error)
+            elif terminal.success:
+                recorder.finish(status="succeeded")
+            else:
+                recorder.finish(status="failed", error=terminal.error)
+
+        try:
+            async for event in self.backend.stream(prompt, opts):
+                if recorder is not None:
+                    recorder.record(event)
+                if isinstance(event, TurnCompleted):
+                    terminal = event
+                yield event
+        except asyncio.CancelledError as exc:
+            finish_monitor(
+                fallback_status="cancelled", fallback_error=f"CancelledError: {exc}"
+            )
+            raise
+        except GeneratorExit:
+            finish_monitor(
+                fallback_status="cancelled",
+                fallback_error="event consumer closed the stream",
+            )
+            raise
+        except BaseException as exc:
+            if recorder is not None:
+                recorder.finish(status="failed", error=f"{type(exc).__name__}: {exc}")
+            raise
+        else:
+            finish_monitor(
+                fallback_status="incomplete",
+                fallback_error="backend stream ended without TurnCompleted",
+            )
 
     async def run(
         self,
@@ -187,17 +264,32 @@ class UnifiedAgent:
         output_schema: dict[str, Any] | None = None,
         resume: str | None = None,
         max_turns: int | None = None,
+        run_id: str | None = None,
+        monitor_metadata: Mapping[str, Any] | None = None,
     ) -> UnifiedResult:
         """Run one task to completion; failures come back as success=False results."""
         events: list[AgentEvent] = []
+        monitor_run_id = (
+            (run_id or uuid.uuid4().hex) if self.monitor is not None else None
+        )
         try:
             async for event in self.stream(
-                task, output_schema=output_schema, resume=resume, max_turns=max_turns
+                task,
+                output_schema=output_schema,
+                resume=resume,
+                max_turns=max_turns,
+                run_id=monitor_run_id,
+                monitor_metadata=monitor_metadata,
             ):
                 events.append(event)
         except Exception as e:  # noqa: BLE001 - deliberate: fold any failure into the result
-            return collect(self.backend.name, events, error=f"{type(e).__name__}: {e}")
-        return collect(self.backend.name, events)
+            return collect(
+                self.backend.name,
+                events,
+                error=f"{type(e).__name__}: {e}",
+                monitor_run_id=monitor_run_id,
+            )
+        return collect(self.backend.name, events, monitor_run_id=monitor_run_id)
 
     def run_sync(self, task: "Task | str", **kwargs: Any) -> UnifiedResult:
         return asyncio.run(self.run(task, **kwargs))
@@ -232,5 +324,7 @@ class SuperAgent:
         )
         return dict(zip(names, results))
 
-    def run_all_sync(self, task: "Task | str", **kwargs: Any) -> dict[str, UnifiedResult]:
+    def run_all_sync(
+        self, task: "Task | str", **kwargs: Any
+    ) -> dict[str, UnifiedResult]:
         return asyncio.run(self.run_all(task, **kwargs))
