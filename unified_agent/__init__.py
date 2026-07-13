@@ -8,17 +8,34 @@ from .agent import SuperAgent, UnifiedAgent, collect
 from .events import (
     AgentEvent,
     AssistantText,
+    CommandOutputDelta,
     CommandRun,
+    CommandStarted,
     FileChanged,
     RawEvent,
     Reasoning,
     SessionStarted,
     TextDelta,
     ToolCall,
+    ToolProgress,
     ToolResult,
     TurnCompleted,
 )
-from .skills import Skill, discover_skills, install_skills, lint_skill, load_skill, make_skill
+from .monitoring import (
+    MonitoredRun,
+    RecordedEvent,
+    RunMonitor,
+    RunRecorder,
+    SQLiteRunMonitor,
+)
+from .skills import (
+    Skill,
+    discover_skills,
+    install_skills,
+    lint_skill,
+    load_skill,
+    make_skill,
+)
 from .task import Task
 from .tools import ToolRegistry, build_tool_server_spec, registry_spec, resolve_registry
 from .types import (
@@ -36,7 +53,7 @@ from .types import (
     UnifiedUsage,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "AgentAuthError",
@@ -44,19 +61,27 @@ __all__ = [
     "AgentRunError",
     "AssistantText",
     "BackendUnavailableError",
+    "CommandOutputDelta",
     "CommandRun",
+    "CommandStarted",
     "FileChanged",
+    "MonitoredRun",
     "RawEvent",
     "Reasoning",
+    "RecordedEvent",
+    "RunMonitor",
     "RunOptions",
+    "RunRecorder",
     "SandboxPolicy",
     "SessionStarted",
     "Skill",
     "SkillError",
+    "SQLiteRunMonitor",
     "SuperAgent",
     "Task",
     "TextDelta",
     "ToolCall",
+    "ToolProgress",
     "ToolRegistry",
     "ToolRegistryError",
     "ToolResult",

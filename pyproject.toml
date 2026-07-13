@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unified-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Drive OpenAI Codex and Claude Code as interchangeable agent units: same tasks, same tools, same skills."
 requires-python = ">=3.11"
 dependencies = [
@@ -23,18 +23,33 @@ all = [
     "claude-agent-sdk>=0.2.90,<0.3",
     "openai-codex>=0.1.0b3,<0.2",
 ]
+monitor-web = [
+    "starlette>=0.47,<2",
+    "uvicorn>=0.34,<1",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "httpx>=0.28,<1",
+    "starlette>=0.47,<2",
+    "uvicorn>=0.34,<1",
     "claude-agent-sdk>=0.2.90,<0.3",
     "openai-codex>=0.1.0b3,<0.2",
 ]
+
+[project.scripts]
+unified-agent-monitor = "unified_agent.monitor_web:main"
 
 [tool.setuptools]
 packages = ["unified_agent", "unified_agent.backends"]
 
 [tool.setuptools.package-data]
-unified_agent = ["py.typed"]
+unified_agent = [
+    "py.typed",
+    "monitor_web_assets/*.html",
+    "monitor_web_assets/*.css",
+    "monitor_web_assets/*.js",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

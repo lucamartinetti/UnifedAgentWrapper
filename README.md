@@ -120,6 +120,70 @@ print(r.structured_output)                    # parsed + validated on both backe
 r2 = await agent.run("now double it", resume=r.session_id)
 ```
 
+## Live process monitoring
+
+Opt into a durable, cross-process event timeline without changing caller code:
+
+```bash
+export UNIFIED_AGENT_MONITOR_DB=/absolute/path/outside-agent-workspaces/agent-monitor.db
+python -m your_project
+```
+
+Or configure it explicitly and attach project metadata:
+
+```python
+from unified_agent import SQLiteRunMonitor
+
+monitor = SQLiteRunMonitor("/var/lib/unified-agent/monitor.db")
+agent = UnifiedAgent("codex", workspace="./workspace", monitor=monitor)
+result = await agent.run(
+    "Inspect the authorized target",
+    monitor_metadata={"project": "pentestgpt", "role": "executor"},
+)
+print(result.monitor_run_id)
+```
+
+`SQLiteRunMonitor` commits each normalized event with a per-run sequence number while the provider
+is active, so a separate process can call `list_runs()` and `list_events(after_sequence=...)` to
+tail it. Codex command starts/output deltas and MCP progress are normalized; Claude tool calls and
+results already arrive as live events. Reasoning and raw provider payloads are omitted by default.
+
+The database includes prompts, commands, tool inputs/results, and target output. Store it outside
+agent-writable workspaces, never commit it, and protect it as a sensitive pentest artifact. See the
+[monitor/debugger architecture and staged web plan](docs/process-monitor-design.md).
+
+### Graphical inspector
+
+Install the optional local web UI:
+
+```bash
+pip install 'unified-agent[monitor-web] @ git+https://<repo-url>'
+```
+
+From this checkout, evaluate the complete interface without provider credentials or token spend:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m unified_agent.monitor_web \
+  --database /tmp/unified-agent-inspector-demo.db --demo --open
+```
+
+For real runs, point the agent and inspector at the same database:
+
+```bash
+export UNIFIED_AGENT_MONITOR_DB=/secure/path/agent-monitor.db
+
+# Terminal 1: read-only browser inspector
+python -m unified_agent.monitor_web --database "$UNIFIED_AGENT_MONITOR_DB" --open
+
+# Terminal 2: any project that constructs UnifiedAgent
+python -m your_project
+```
+
+The inspector provides a searchable run list, live status, sequence-grounded SSE updates, grouped
+command/tool timelines, streaming output, file changes, terminal results, usage/cost, prompts, and
+project metadata. It serves only local packaged assets, exposes no mutation endpoints, and refuses
+non-loopback network bindings.
+
 ## Demo
 
 ```bash
@@ -159,12 +223,13 @@ environment settings.
 `UnifiedResult`: `success`, `text`, `structured_output`, `usage`
 (input/cached/output/reasoning tokens — provider counting differs, values passed through),
 `cost_usd` (Claude only; Codex reports tokens, not dollars), `session_id` (resumable),
-`tool_calls`, `file_changes`, `events` (full normalized trace), `error`.
+`tool_calls`, `file_changes`, `events` (full normalized trace), `error`, and
+`monitor_run_id` when monitoring is enabled.
 
 ## Tests
 
 ```bash
-pytest -q                      # 90 unit tests, no network, no auth needed
+pytest -q                      # offline unit tests, no network or auth needed
 python -m examples.demo ...    # live runs (cost money, need auth)
 ```
 
@@ -183,10 +248,11 @@ name/shape the code relies on) → `pytest -q` (free, offline) →
 ## Layout
 
 ```
-unified_agent/        the package (types, events, task, tools, tool_server, skills, agent)
+unified_agent/        package (agent, backends, events, monitoring, monitor_web, tools, skills)
+unified_agent/monitor_web_assets/  local graphical inspector (HTML/CSS/JS)
 unified_agent/backends/  claude_code.py, codex.py, base.py
 examples/             demo_tools.py, skills/word-count-report/, demo.py
-tests/                90 unit tests incl. a real stdio MCP round-trip
+tests/                offline unit tests incl. a real stdio MCP round-trip
 docs/superpowers/     design spec + implementation plan
 scripts/              verify_sdk_surface.py (re-run after SDK upgrades)
 ```

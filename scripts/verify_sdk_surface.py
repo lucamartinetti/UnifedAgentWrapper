@@ -90,7 +90,14 @@ for name in ["TurnResult", "ThreadTokenUsage"]:
 # effort: the runtime hardcodes CODEX_EFFORTS and passes effort as a plain
 # string (backends/codex.py never imports from the regenerated generated/
 # layer). This script is the one place allowed to import it, to catch drift.
-from openai_codex.generated.v2_all import ReasoningEffort, TurnStartParams
+from openai_codex.generated.v2_all import (
+    CommandExecutionOutputDeltaNotification,
+    CommandExecutionThreadItem,
+    ItemStartedNotification,
+    McpToolCallProgressNotification,
+    ReasoningEffort,
+    TurnStartParams,
+)
 
 from unified_agent.backends.codex import CODEX_EFFORTS
 
@@ -102,6 +109,34 @@ try:
     check(coerced is ReasoningEffort.high, "TurnStartParams coerces effort='high' string")
 except Exception as e:  # noqa: BLE001 - any failure here is a surface break
     check(False, f"TurnStartParams(effort='high') raised {type(e).__name__}: {e}")
+
+# Live monitor events rely on these notification names and correlation fields.
+for model, fields in [
+    (ItemStartedNotification, {"item", "started_at_ms", "thread_id", "turn_id"}),
+    (
+        CommandExecutionOutputDeltaNotification,
+        {"item_id", "delta", "thread_id", "turn_id"},
+    ),
+    (
+        McpToolCallProgressNotification,
+        {"item_id", "message", "thread_id", "turn_id"},
+    ),
+    (
+        CommandExecutionThreadItem,
+        {
+            "id",
+            "command",
+            "cwd",
+            "process_id",
+            "aggregated_output",
+            "exit_code",
+            "duration_ms",
+            "status",
+        },
+    ),
+]:
+    actual = set(model.model_fields)
+    check(fields <= actual, f"{model.__name__} monitoring fields")
 
 # --- mcp ----------------------------------------------------------------
 from mcp.server.fastmcp import FastMCP

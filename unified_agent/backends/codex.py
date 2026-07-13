@@ -21,13 +21,16 @@ from openai_codex import AsyncCodex, CodexConfig, Sandbox
 from ..events import (
     AgentEvent,
     AssistantText,
+    CommandOutputDelta,
     CommandRun,
+    CommandStarted,
     FileChanged,
     RawEvent,
     Reasoning,
     SessionStarted,
     TextDelta,
     ToolCall,
+    ToolProgress,
     ToolResult,
     TurnCompleted,
 )
@@ -113,6 +116,7 @@ class _TurnState:
         self.last_agent_text: str | None = None
         self.usage: Any | None = None  # latest ThreadTokenUsage
         self.errors: list[str] = []
+        self.started_item_ids: set[str] = set()
 
 
 def _status_str(status: Any) -> str:
@@ -135,6 +139,44 @@ def _stringify_mcp_result(result: Any) -> str:
     return "\n".join(parts)
 
 
+def _mcp_arguments(root: Any) -> Any:
+    arguments = getattr(root, "arguments", None)
+    if isinstance(arguments, str):
+        try:
+            return json.loads(arguments)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return arguments
+
+
+def _root_value(value: Any) -> Any:
+    """Unwrap Pydantic RootModel values without importing generated SDK types."""
+    return getattr(value, "root", value)
+
+
+def _normalize_item_started(root: Any, state: _TurnState) -> Iterator[AgentEvent]:
+    kind = getattr(root, "type", None)
+    item_id = getattr(root, "id", None)
+    if item_id:
+        state.started_item_ids.add(item_id)
+    if kind == "commandExecution":
+        cwd = getattr(root, "cwd", None)
+        yield CommandStarted(
+            command=getattr(root, "command", "") or "",
+            call_id=item_id,
+            cwd=str(_root_value(cwd)) if cwd is not None else None,
+            process_id=getattr(root, "process_id", None),
+        )
+    elif kind == "mcpToolCall":
+        server = getattr(root, "server", "") or ""
+        tool = getattr(root, "tool", "") or ""
+        yield ToolCall(
+            name=f"mcp__{server}__{tool}",
+            input=_mcp_arguments(root),
+            call_id=item_id,
+        )
+
+
 def _normalize_item(root: Any, state: _TurnState) -> Iterator[AgentEvent]:
     kind = getattr(root, "type", None)
     if kind == "agentMessage":
@@ -153,20 +195,26 @@ def _normalize_item(root: Any, state: _TurnState) -> Iterator[AgentEvent]:
             command=getattr(root, "command", "") or "",
             exit_code=getattr(root, "exit_code", None),
             output=getattr(root, "aggregated_output", "") or "",
+            call_id=getattr(root, "id", None),
+            process_id=getattr(root, "process_id", None),
+            duration_ms=getattr(root, "duration_ms", None),
         )
     elif kind == "mcpToolCall":
         server = getattr(root, "server", "") or ""
         tool = getattr(root, "tool", "") or ""
-        arguments = getattr(root, "arguments", None)
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except (json.JSONDecodeError, ValueError):
-                pass
         call_id = getattr(root, "id", None)
-        yield ToolCall(name=f"mcp__{server}__{tool}", input=arguments, call_id=call_id)
+        if call_id not in state.started_item_ids:
+            # Compatibility fallback for older app-server streams that omitted
+            # item/started: callers still receive exactly one ToolCall.
+            yield ToolCall(
+                name=f"mcp__{server}__{tool}",
+                input=_mcp_arguments(root),
+                call_id=call_id,
+            )
         error = getattr(root, "error", None)
-        failed = _status_str(getattr(root, "status", "")) != "completed" or error is not None
+        failed = (
+            _status_str(getattr(root, "status", "")) != "completed" or error is not None
+        )
         output = (
             getattr(error, "message", None) or str(error)
             if error is not None
@@ -195,7 +243,9 @@ def _usage_from_state(state: _TurnState) -> UnifiedUsage:
     )
 
 
-def normalize_notification(method: str, payload: Any, state: _TurnState) -> Iterator[AgentEvent]:
+def normalize_notification(
+    method: str, payload: Any, state: _TurnState
+) -> Iterator[AgentEvent]:
     if method == "thread/started":
         thread = getattr(payload, "thread", None)
         thread_id = getattr(thread, "id", None)
@@ -210,6 +260,24 @@ def normalize_notification(method: str, payload: Any, state: _TurnState) -> Iter
         root = getattr(item, "root", item)
         if root is not None:
             yield from _normalize_item(root, state)
+
+    elif method == "item/started":
+        item = getattr(payload, "item", None)
+        root = getattr(item, "root", item)
+        if root is not None:
+            yield from _normalize_item_started(root, state)
+
+    elif method == "item/commandExecution/outputDelta":
+        yield CommandOutputDelta(
+            call_id=getattr(payload, "item_id", None),
+            delta=getattr(payload, "delta", "") or "",
+        )
+
+    elif method == "item/mcpToolCall/progress":
+        yield ToolProgress(
+            call_id=getattr(payload, "item_id", None),
+            message=getattr(payload, "message", "") or "",
+        )
 
     elif method == "item/agentMessage/delta":
         if state.opts.stream_text:
@@ -249,10 +317,12 @@ def normalize_notification(method: str, payload: Any, state: _TurnState) -> Iter
             duration_ms=duration,
             structured_output=structured,
             stop_reason=status,
-            error=None if success else ("; ".join(p for p in error_parts if p) or status),
+            error=None
+            if success
+            else ("; ".join(p for p in error_parts if p) or status),
         )
 
-    elif method in ("turn/started", "item/started", "item/updated"):
+    elif method in ("turn/started", "item/updated"):
         pass  # uninteresting transitions; item/completed carries the substance
 
     else:
@@ -261,7 +331,9 @@ def normalize_notification(method: str, payload: Any, state: _TurnState) -> Iter
 
 def _looks_like_auth_error(exc: Exception) -> bool:
     text = str(exc).lower()
-    return any(s in text for s in ("auth", "login", "unauthorized", "api key", "logged out"))
+    return any(
+        s in text for s in ("auth", "login", "unauthorized", "api key", "logged out")
+    )
 
 
 class CodexBackend:
@@ -274,7 +346,9 @@ class CodexBackend:
         try:
             async with AsyncCodex(config) as codex:
                 if opts.resume:
-                    thread = await codex.thread_resume(opts.resume, **build_thread_kwargs(opts))
+                    thread = await codex.thread_resume(
+                        opts.resume, **build_thread_kwargs(opts)
+                    )
                 else:
                     thread = await codex.thread_start(**build_thread_kwargs(opts))
                 state.thread_id = getattr(thread, "id", None)

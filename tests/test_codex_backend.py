@@ -15,13 +15,16 @@ from unified_agent.backends.codex import (
 )
 from unified_agent.events import (
     AssistantText,
+    CommandOutputDelta,
     CommandRun,
+    CommandStarted,
     FileChanged,
     RawEvent,
     Reasoning,
     SessionStarted,
     TextDelta,
     ToolCall,
+    ToolProgress,
     ToolResult,
     TurnCompleted,
 )
@@ -34,20 +37,28 @@ def opts(tmp_path, **kw) -> RunOptions:
 
 TOOL_SERVER = ToolServerSpec(
     server_name="unified",
-    command=[sys.executable, "-m", "unified_agent.tool_server", "tests.fixture_registry:REG"],
+    command=[
+        sys.executable,
+        "-m",
+        "unified_agent.tool_server",
+        "tests.fixture_registry:REG",
+    ],
     env={"PYTHONPATH": "/re po"},  # space exercises TOML string quoting
 )
 
 
 # --- config / thread option mapping ----------------------------------------
 
+
 def test_config_overrides_define_the_mcp_server_inline():
     overrides = build_config_overrides(TOOL_SERVER)
     joined = "\n".join(overrides)
-    assert f'mcp_servers.unified.command={json.dumps(sys.executable)}' in overrides
+    assert f"mcp_servers.unified.command={json.dumps(sys.executable)}" in overrides
     args_line = next(o for o in overrides if ".args=" in o)
     assert json.loads(args_line.split("=", 1)[1]) == [
-        "-m", "unified_agent.tool_server", "tests.fixture_registry:REG",
+        "-m",
+        "unified_agent.tool_server",
+        "tests.fixture_registry:REG",
     ]
     env_line = next(o for o in overrides if ".env=" in o)
     assert env_line == 'mcp_servers.unified.env={ "PYTHONPATH" = "/re po" }'
@@ -96,6 +107,7 @@ def test_turn_kwargs_invalid_effort(tmp_path):
 
 # --- notification normalization ---------------------------------------------
 
+
 def fresh_state(tmp_path, **kw) -> _TurnState:
     return _TurnState(opts=opts(tmp_path, **kw))
 
@@ -122,7 +134,9 @@ def test_agent_message_item(tmp_path):
 def test_reasoning_item_prefers_summary(tmp_path):
     state = fresh_state(tmp_path)
     item = NS(root=NS(type="reasoning", summary=["thought hard"], content=[], id="i2"))
-    assert norm("item/completed", NS(item=item), state) == [Reasoning(text="thought hard")]
+    assert norm("item/completed", NS(item=item), state) == [
+        Reasoning(text="thought hard")
+    ]
 
 
 def test_command_execution_item(tmp_path):
@@ -138,7 +152,51 @@ def test_command_execution_item(tmp_path):
         )
     )
     assert norm("item/completed", NS(item=item), state) == [
-        CommandRun(command="ls -la", exit_code=0, output="total 0")
+        CommandRun(command="ls -la", exit_code=0, output="total 0", call_id="i3")
+    ]
+
+
+def test_command_lifecycle_is_visible_before_completion(tmp_path):
+    state = fresh_state(tmp_path)
+    root = NS(
+        type="commandExecution",
+        command="nmap -sV 127.0.0.1",
+        cwd=NS(root="/workspace"),
+        process_id="pty-7",
+        exit_code=None,
+        aggregated_output="",
+        duration_ms=None,
+        status="inProgress",
+        id="cmd-1",
+    )
+
+    assert norm("item/started", NS(item=NS(root=root)), state) == [
+        CommandStarted(
+            command="nmap -sV 127.0.0.1",
+            call_id="cmd-1",
+            cwd="/workspace",
+            process_id="pty-7",
+        )
+    ]
+    assert norm(
+        "item/commandExecution/outputDelta",
+        NS(item_id="cmd-1", delta="Starting Nmap...\n"),
+        state,
+    ) == [CommandOutputDelta(call_id="cmd-1", delta="Starting Nmap...\n")]
+
+    root.exit_code = 0
+    root.aggregated_output = "Starting Nmap...\nDone\n"
+    root.duration_ms = 42
+    root.status = "completed"
+    assert norm("item/completed", NS(item=NS(root=root)), state) == [
+        CommandRun(
+            command="nmap -sV 127.0.0.1",
+            exit_code=0,
+            output="Starting Nmap...\nDone\n",
+            call_id="cmd-1",
+            process_id="pty-7",
+            duration_ms=42,
+        )
     ]
 
 
@@ -150,7 +208,9 @@ def test_mcp_tool_call_item(tmp_path):
             server="unified",
             tool="add_numbers",
             arguments='{"a": 2, "b": 3}',
-            result=NS(content=[NS(type="text", text="2 + 3 = 5")], structured_content=None),
+            result=NS(
+                content=[NS(type="text", text="2 + 3 = 5")], structured_content=None
+            ),
             error=None,
             status="completed",
             id="i4",
@@ -164,12 +224,51 @@ def test_mcp_tool_call_item(tmp_path):
     assert "5" in result.output and result.is_error is False
 
 
+def test_mcp_start_and_progress_are_not_delayed_or_duplicated(tmp_path):
+    state = fresh_state(tmp_path)
+    root = NS(
+        type="mcpToolCall",
+        server="unified",
+        tool="scan",
+        arguments={"target": "127.0.0.1"},
+        result=None,
+        error=None,
+        status="inProgress",
+        id="mcp-1",
+    )
+
+    assert norm("item/started", NS(item=NS(root=root)), state) == [
+        ToolCall(
+            name="mcp__unified__scan",
+            input={"target": "127.0.0.1"},
+            call_id="mcp-1",
+        )
+    ]
+    assert norm(
+        "item/mcpToolCall/progress",
+        NS(item_id="mcp-1", message="probing port 80"),
+        state,
+    ) == [ToolProgress(call_id="mcp-1", message="probing port 80")]
+
+    root.result = NS(content=[NS(type="text", text="open")], structured_content=None)
+    root.status = "completed"
+    assert norm("item/completed", NS(item=NS(root=root)), state) == [
+        ToolResult(call_id="mcp-1", output="open", is_error=False)
+    ]
+
+
 def test_failed_mcp_tool_call_marks_error(tmp_path):
     state = fresh_state(tmp_path)
     item = NS(
         root=NS(
-            type="mcpToolCall", server="unified", tool="boom", arguments=None,
-            result=None, error=NS(message="exploded"), status="failed", id="i5",
+            type="mcpToolCall",
+            server="unified",
+            tool="boom",
+            arguments=None,
+            result=None,
+            error=NS(message="exploded"),
+            status="failed",
+            id="i5",
         )
     )
     call, result = norm("item/completed", NS(item=item), state)
@@ -203,11 +302,20 @@ def test_agent_message_delta_gated_by_stream_text(tmp_path):
 def test_token_usage_tracked_then_reported_on_turn_completed(tmp_path):
     state = fresh_state(tmp_path)
     usage = NS(
-        total=NS(input_tokens=100, cached_input_tokens=40, output_tokens=9,
-                 reasoning_output_tokens=3, total_tokens=112),
-        last=None, model_context_window=None,
+        total=NS(
+            input_tokens=100,
+            cached_input_tokens=40,
+            output_tokens=9,
+            reasoning_output_tokens=3,
+            total_tokens=112,
+        ),
+        last=None,
+        model_context_window=None,
     )
-    assert norm("thread/tokenUsage/updated", NS(token_usage=usage, turn_id="t"), state) == []
+    assert (
+        norm("thread/tokenUsage/updated", NS(token_usage=usage, turn_id="t"), state)
+        == []
+    )
     state.thread_id = "thr-1"
     state.last_agent_text = "final answer"
     turn = NS(id="t", status="completed", error=None)

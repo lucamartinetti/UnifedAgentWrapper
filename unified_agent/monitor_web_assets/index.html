@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>UnifiedAgent Inspector</title>
+    <link rel="stylesheet" href="/assets/style.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to inspector</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Agent runs">
+        <header class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div>
+            <p class="eyebrow">UnifiedAgent</p>
+            <h1>Inspector</h1>
+          </div>
+        </header>
+
+        <div class="connection" id="connection-badge" role="status">
+          <span class="connection-dot"></span>
+          <span id="connection-text">Connecting</span>
+        </div>
+
+        <label class="search-box" for="run-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="run-search" type="search" placeholder="Search runs" autocomplete="off">
+        </label>
+
+        <div class="status-filters" aria-label="Filter runs">
+          <button class="filter-chip active" data-status="all" type="button">All</button>
+          <button class="filter-chip" data-status="running" type="button">Live</button>
+          <button class="filter-chip" data-status="succeeded" type="button">Passed</button>
+          <button class="filter-chip" data-status="failed" type="button">Failed</button>
+        </div>
+
+        <div class="run-list-heading">
+          <span>Recent runs</span>
+          <span id="run-count">0</span>
+        </div>
+        <nav class="run-list" id="run-list" aria-live="polite"></nav>
+
+        <footer class="sidebar-footer">
+          <span class="read-only-pill">Read only</span>
+          <span>Sequence-grounded telemetry</span>
+        </footer>
+      </aside>
+
+      <main id="main-content" class="main-content">
+        <section class="empty-state" id="empty-state">
+          <div class="empty-orbit" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <p class="eyebrow">Waiting for telemetry</p>
+          <h2>Select an agent run</h2>
+          <p>Live commands, tool calls, output, files, and terminal status will appear here.</p>
+        </section>
+
+        <section class="inspector hidden" id="inspector" aria-live="polite">
+          <header class="run-header">
+            <div class="run-heading">
+              <div class="heading-badges">
+                <span class="backend-badge" id="backend-badge">backend</span>
+                <span class="status-badge" id="run-status">status</span>
+                <span class="live-age" id="live-age"></span>
+              </div>
+              <h2 id="run-title">Agent run</h2>
+              <button class="copy-id" id="copy-run-id" type="button" title="Copy run ID">
+                <span id="run-id">run-id</span>
+                <span aria-hidden="true">⧉</span>
+              </button>
+            </div>
+            <button class="icon-button" id="refresh-button" type="button" title="Refresh snapshot" aria-label="Refresh snapshot">↻</button>
+          </header>
+
+          <section class="metrics" aria-label="Run metrics">
+            <article class="metric-card">
+              <span class="metric-label">Events</span>
+              <strong id="metric-events">0</strong>
+              <small>ordered records</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Actions</span>
+              <strong id="metric-actions">0</strong>
+              <small>commands + tools</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Tokens</span>
+              <strong id="metric-tokens">—</strong>
+              <small id="metric-token-detail">provider total</small>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">Duration</span>
+              <strong id="metric-duration">—</strong>
+              <small>wall clock</small>
+            </article>
+            <article class="metric-card accent-card">
+              <span class="metric-label">Cost</span>
+              <strong id="metric-cost">—</strong>
+              <small>when reported</small>
+            </article>
+          </section>
+
+          <div class="workspace-grid">
+            <section class="activity-panel">
+              <div class="panel-toolbar">
+                <div class="view-tabs" role="tablist" aria-label="Inspector view">
+                  <button class="view-tab active" data-view="timeline" type="button" role="tab">Timeline</button>
+                  <button class="view-tab" data-view="raw" type="button" role="tab">Raw events</button>
+                </div>
+                <label class="timeline-filter" for="event-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="event-search" type="search" placeholder="Filter activity" autocomplete="off">
+                </label>
+              </div>
+
+              <div class="timeline" id="timeline" role="tabpanel"></div>
+              <div class="raw-events hidden" id="raw-events" role="tabpanel"></div>
+            </section>
+
+            <aside class="context-panel" aria-label="Run context">
+              <section class="context-section">
+                <div class="section-heading">
+                  <h3>Instruction</h3>
+                  <button class="text-button" id="copy-prompt" type="button">Copy</button>
+                </div>
+                <pre class="prompt" id="run-prompt"></pre>
+              </section>
+
+              <section class="context-section">
+                <h3>Execution context</h3>
+                <dl class="detail-list" id="execution-context"></dl>
+              </section>
+
+              <section class="context-section">
+                <h3>Project metadata</h3>
+                <dl class="detail-list" id="run-metadata"></dl>
+              </section>
+
+              <section class="context-section terminal-section hidden" id="terminal-section">
+                <h3>Terminal result</h3>
+                <pre class="terminal-result" id="terminal-result"></pre>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

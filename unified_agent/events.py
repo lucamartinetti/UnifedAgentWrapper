@@ -47,12 +47,41 @@ class ToolResult:
 
 
 @dataclass(frozen=True)
+class ToolProgress:
+    """A non-terminal progress update for a running tool call."""
+
+    call_id: str | None
+    message: str
+
+
+@dataclass(frozen=True)
+class CommandStarted:
+    """A shell command became active in the provider runtime."""
+
+    command: str
+    call_id: str | None = None
+    cwd: str | None = None
+    process_id: str | None = None
+
+
+@dataclass(frozen=True)
+class CommandOutputDelta:
+    """Incremental stdout/stderr for a running command."""
+
+    call_id: str | None
+    delta: str
+
+
+@dataclass(frozen=True)
 class CommandRun:
     """A shell command executed by the agent (Codex commandExecution items)."""
 
     command: str
     exit_code: int | None
     output: str
+    call_id: str | None = None
+    process_id: str | None = None
+    duration_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +119,9 @@ AgentEvent = Union[
     Reasoning,
     ToolCall,
     ToolResult,
+    ToolProgress,
+    CommandStarted,
+    CommandOutputDelta,
     CommandRun,
     FileChanged,
     TurnCompleted,
