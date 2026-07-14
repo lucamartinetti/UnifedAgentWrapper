@@ -55,3 +55,8 @@ unified_agent = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["slow: spawns subprocesses or takes >1s"]
+
+[tool.uv]
+# openai-codex pins a prerelease CLI binary. Keep uv.lock committed and review
+# prerelease changes when intentionally updating the backend SDK.
+prerelease = "allow"
