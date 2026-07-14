@@ -43,7 +43,7 @@ Backends are opt-in extras — each SDK bundles a ~200MB vendor runtime, so
 install only what you use:
 
 ```bash
-pip install -e '.[dev]'        # this repo: both backends + pytest
+uv sync --extra dev --locked   # this repo: both backends + pytest
 
 # as a dependency in another project (pick one):
 pip install 'unified-agent[all] @ git+https://<repo-url>'     # both backends
@@ -54,6 +54,8 @@ pip install 'unified-agent[codex] @ git+https://<repo-url>'   # Codex only
 Both SDKs are pre-1.0 and move fast, so they are pinned with upper bounds
 (`<0.3` / `<0.2`). Treat every pin bump as a behavior change — most
 claude-agent-sdk releases swap the bundled CLI — and re-verify (see Tests).
+The committed `uv.lock` makes this checkout reproducible; regenerate and review
+it whenever either backend constraint changes.
 
 Auth (uses your existing logins):
 - **Claude:** Claude Code login (`claude /login`) or `ANTHROPIC_API_KEY`.
